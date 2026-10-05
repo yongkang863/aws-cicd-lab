@@ -35,3 +35,48 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t aws-cicd-lab:${{ github.sha }} .
+
+  publish-ecr:
+    name: Publish to ECR
+    needs: test-and-build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      AWS_REGION: ap-southeast-1
+      ECR_REPOSITORY: aws-cicd-lab
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-${{ github.run_id }}
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          IMAGE_URI="$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker build -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
+          echo "Published image: $IMAGE_URI" >> "$GITHUB_STEP_SUMMARY"
