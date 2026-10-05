@@ -1,4 +1,4 @@
-name: CI
+name: CI/CD
 
 on:
   pull_request:
@@ -8,6 +8,11 @@ on:
 
 permissions:
   contents: read
+
+# Keep a running deployment alive when another commit arrives.
+concurrency:
+  group: aws-cicd-lab-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   test-and-build:
@@ -33,6 +38,9 @@ jobs:
       - name: Run automated tests
         run: python -m pytest -q
 
+      - name: Check deployment script syntax
+        run: bash -n scripts/deploy.sh
+
       - name: Build Docker image
         run: docker build -t aws-cicd-lab:${{ github.sha }} .
 
@@ -46,6 +54,9 @@ jobs:
     permissions:
       contents: read
       id-token: write
+
+    outputs:
+      image_uri: ${{ steps.publish.outputs.image_uri }}
 
     env:
       AWS_REGION: ap-southeast-1
@@ -72,6 +83,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build and push Docker image
+        id: publish
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -79,4 +91,45 @@ jobs:
           IMAGE_URI="$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           docker build -t "$IMAGE_URI" .
           docker push "$IMAGE_URI"
+          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
           echo "Published image: $IMAGE_URI" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-ec2:
+    name: Deploy to EC2
+    needs: publish-ecr
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      AWS_REGION: ap-southeast-1
+      EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+      LAB_IMAGE_URI: ${{ needs.publish-ecr.outputs.image_uri }}
+      AWS_PAGER: ""
+      AWS_RETRY_MODE: standard
+      AWS_MAX_ATTEMPTS: "3"
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Configure deployment credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubDeploy-${{ github.run_id }}
+
+      - name: Deploy and wait for the EC2 result
+        run: python scripts/deploy_via_ssm.py
