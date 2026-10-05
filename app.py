@@ -7,7 +7,7 @@ VERSION = "1.0.0"
 @app.get("/")
 def home():
     return (
-        "<h1>My CI/CD Lab</h1>"
+        "<h1>Broken Title</h1>"
         f"<p>Version: {VERSION}</p>"
     )
 
