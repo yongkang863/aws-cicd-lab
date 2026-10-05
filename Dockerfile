@@ -13,4 +13,4 @@ USER appuser
 
 EXPOSE 8080
 
-CMD ["python", "-c", "import sys; print('Intentional rollback drill', flush=True); sys.exit(1)"]
+CMD ["waitress-serve", "--host=0.0.0.0", "--port=8080", "app:app"]
