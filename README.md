@@ -28,3 +28,15 @@ Build a small application with automated testing and deployment to AWS.
 
 \- \[ ] Demonstrate rollback
 
+
+## CI failure and recovery exercise
+
+In [PR #5](https://github.com/yongkang863/aws-cicd-lab/pull/5),
+I deliberately changed the homepage title to demonstrate CI catching a mistake.
+
+- The automated homepage test failed.
+- The Docker build step was skipped.
+- Branch protection requires the "Test and build" check to pass before merging.
+
+The correction restores the expected homepage title.
+Pushing the correction to the same branch triggers another CI run.
