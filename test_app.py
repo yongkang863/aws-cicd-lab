@@ -6,7 +6,7 @@ def test_homepage():
 
     assert response.status_code == 200
     assert "My CI/CD Lab" in response.text
-    assert "Version: 1.0.0" in response.text
+    assert "Version: 1.0.1" in response.text
 
 
 def test_health():
@@ -15,7 +15,7 @@ def test_health():
     assert response.status_code == 200
     assert response.json == {
         "status": "ok",
-        "version": "1.0.0",
+        "version": "1.0.1",
     }
 
 
